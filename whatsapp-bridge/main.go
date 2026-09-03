@@ -204,7 +204,7 @@ type SendMessageRequest struct {
 }
 
 // Function to send a WhatsApp message
-func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message string, mediaPath string) (bool, string) {
+func sendWhatsAppMessage(client *whatsmeow.Client, messageStore *MessageStore, recipient string, message string, mediaPath string, logger waLog.Logger) (bool, string) {
 	if !client.IsConnected() {
 		return false, "Not connected to WhatsApp"
 	}
@@ -363,13 +363,51 @@ func sendWhatsAppMessage(client *whatsmeow.Client, recipient string, message str
 	}
 
 	// Send message
-	_, err = client.SendMessage(context.Background(), recipientJID, msg)
+	resp, err := client.SendMessage(context.Background(), recipientJID, msg)
 
 	if err != nil {
 		return false, fmt.Sprintf("Error sending message: %v", err)
 	}
 
+	// Record the message we just sent. WhatsApp does not echo a message back to
+	// the device that sent it, so without this it would never reach the database
+	// and list_messages would show no trace of anything the agent sends.
+	// Failing to store is not a send failure: the message is already delivered.
+	storeSentMessage(client, messageStore, resp, recipientJID, msg, logger)
+
 	return true, fmt.Sprintf("Message sent to %s", recipient)
+}
+
+// storeSentMessage writes an outgoing message into the same tables the receive
+// path uses, so sent and received messages are shaped identically — including
+// the media fields, which keeps download_media working on our own attachments.
+func storeSentMessage(client *whatsmeow.Client, messageStore *MessageStore, resp whatsmeow.SendResponse,
+	recipientJID types.JID, msg *waProto.Message, logger waLog.Logger) {
+	if messageStore == nil {
+		return
+	}
+
+	chatJID := recipientJID.String()
+
+	var sender string
+	if client.Store.ID != nil {
+		sender = client.Store.ID.User
+	}
+
+	name := GetChatName(client, messageStore, recipientJID, chatJID, nil, recipientJID.User, logger)
+	if err := messageStore.StoreChat(chatJID, name, resp.Timestamp); err != nil {
+		logger.Warnf("Failed to store chat for sent message: %v", err)
+	}
+
+	content := extractTextContent(msg)
+	mediaType, filename, url, mediaKey, fileSHA256, fileEncSHA256, fileLength := extractMediaInfo(msg)
+
+	if err := messageStore.StoreMessage(
+		resp.ID, chatJID, sender, content, resp.Timestamp, true,
+		mediaType, filename, url, mediaKey, fileSHA256, fileEncSHA256, fileLength,
+	); err != nil {
+		logger.Warnf("Failed to store sent message: %v", err)
+	}
 }
 
 // Extract media info from a message
@@ -690,7 +728,7 @@ func restAPIPort() int {
 	return 8080
 }
 
-func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int) {
+func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int, logger waLog.Logger) {
 	// Handler for sending messages
 	http.HandleFunc("/api/send", func(w http.ResponseWriter, r *http.Request) {
 		// Only allow POST requests
@@ -720,7 +758,7 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 		fmt.Println("Received request to send message", req.Message, req.MediaPath)
 
 		// Send the message
-		success, message := sendWhatsAppMessage(client, req.Recipient, req.Message, req.MediaPath)
+		success, message := sendWhatsAppMessage(client, messageStore, req.Recipient, req.Message, req.MediaPath, logger)
 		fmt.Println("Message sent", success, message)
 		// Set response headers
 		w.Header().Set("Content-Type", "application/json")
@@ -926,7 +964,7 @@ func main() {
 	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
 
 	// Start REST API server
-	startRESTServer(client, messageStore, restAPIPort())
+	startRESTServer(client, messageStore, restAPIPort(), logger)
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)

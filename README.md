@@ -25,6 +25,12 @@ This fork:
 - makes the REST API port configurable (`WHATSAPP_API_PORT`), because 8080 was hardcoded in two files that have to agree, and a port collision fails quietly
 - makes the log level configurable (`WA_LOG_LEVEL`), because the failure above is invisible without it
 - allows 10 minutes to scan the QR code rather than 3
+- stores messages the agent sends. Upstream writes only incoming messages, and
+  WhatsApp does not echo a message back to the device that sent it, so anything
+  sent through `send_message` left no trace locally — an agent that sent a
+  message and then called `list_messages` to check would conclude it had not.
+  Sent messages are now written to the same tables, with the same media fields,
+  so `download_media` works on your own attachments too.
 
 No other behaviour is changed. Outside the Go and Python source, this fork also ignores the local session store and build output, and carries a regenerated `uv.lock` (lock-format only; no dependency versions differ).
 
@@ -356,20 +362,6 @@ go build .
 ```
 
 If the build then fails, it is because whatsmeow changed an API signature; the errors name each call site and are usually a matter of passing `context.Background()` as a new first argument.
-
-### Messages you send do not appear in the database
-
-The bridge records incoming messages, but `/api/send` does not write to the
-message store, and WhatsApp does not echo a message back to the device that
-sent it. So a message sent through `send_message` reaches its recipient and
-is visible in WhatsApp on your phone, while `list_messages` and
-`get_last_interaction` still show only what came in.
-
-This matters when an agent sends something and then checks whether it did:
-it will conclude that it did not. Treat the tool's own success response as
-the record of a send.
-
-This is upstream behaviour, unchanged here.
 
 ### Authentication Issues
 
