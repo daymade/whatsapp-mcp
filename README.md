@@ -34,8 +34,8 @@ Nothing else is changed from upstream.
 
 ### Prerequisites
 
-- Go
-- Python 3.6+
+- Go 1.26 or newer. The upgraded whatsmeow requires it; Go's default `GOTOOLCHAIN=auto` will fetch a newer toolchain for you if your installed Go is older.
+- Python 3.11 or newer (`whatsapp-mcp-server/pyproject.toml` sets `requires-python = ">=3.11"`)
 - Anthropic Claude Desktop app (or Cursor)
 - UV (Python package manager), install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - FFmpeg (_optional_) - Only needed for audio messages. If you want to send audio files as playable WhatsApp voice messages, they must be in `.ogg` Opus format. With FFmpeg installed, the MCP server will automatically convert non-Opus audio files. Without FFmpeg, you can still send raw audio files using the `send_file` tool.
