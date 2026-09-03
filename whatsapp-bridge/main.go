@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -676,6 +677,19 @@ func extractDirectPathFromURL(url string) string {
 }
 
 // Start a REST API server to expose the WhatsApp client functionality
+// restAPIPort returns the port the local REST API listens on. Override with
+// WHATSAPP_API_PORT when 8080 is already taken on the machine; the Python MCP
+// server must then be pointed at the same port via WHATSAPP_API_BASE_URL.
+func restAPIPort() int {
+	if v := os.Getenv("WHATSAPP_API_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 && p < 65536 {
+			return p
+		}
+		fmt.Printf("Ignoring invalid WHATSAPP_API_PORT=%q, using 8080\n", v)
+	}
+	return 8080
+}
+
 func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port int) {
 	// Handler for sending messages
 	http.HandleFunc("/api/send", func(w http.ResponseWriter, r *http.Request) {
@@ -775,7 +789,9 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 	})
 
 	// Start the server
-	serverAddr := fmt.Sprintf(":%d", port)
+	// Bind to loopback only: /api/send has no auth, so a wildcard bind would let
+	// anyone on the LAN send WhatsApp messages as this account.
+	serverAddr := fmt.Sprintf("127.0.0.1:%d", port)
 	fmt.Printf("Starting REST API server on %s...\n", serverAddr)
 
 	// Run server in a goroutine so it doesn't block
@@ -788,11 +804,15 @@ func startRESTServer(client *whatsmeow.Client, messageStore *MessageStore, port 
 
 func main() {
 	// Set up logger
-	logger := waLog.Stdout("Client", "INFO", true)
+	logLevel := os.Getenv("WA_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "INFO"
+	}
+	logger := waLog.Stdout("Client", logLevel, true)
 	logger.Infof("Starting WhatsApp client...")
 
 	// Create database connection for storing session data
-	dbLog := waLog.Stdout("Database", "INFO", true)
+	dbLog := waLog.Stdout("Database", logLevel, true)
 
 	// Create directory for database if it doesn't exist
 	if err := os.MkdirAll("store", 0755); err != nil {
@@ -881,7 +901,7 @@ func main() {
 		select {
 		case <-connected:
 			fmt.Println("\nSuccessfully connected and authenticated!")
-		case <-time.After(3 * time.Minute):
+		case <-time.After(10 * time.Minute):
 			logger.Errorf("Timeout waiting for QR code scan")
 			return
 		}
@@ -906,7 +926,7 @@ func main() {
 	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
 
 	// Start REST API server
-	startRESTServer(client, messageStore, 8080)
+	startRESTServer(client, messageStore, restAPIPort())
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)
