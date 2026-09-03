@@ -292,6 +292,20 @@ go build .
 
 If the build then fails, it is because whatsmeow changed an API signature; the errors name each call site and are usually a matter of passing `context.Background()` as a new first argument.
 
+### Messages you send do not appear in the database
+
+The bridge records incoming messages, but `/api/send` does not write to the
+message store, and WhatsApp does not echo a message back to the device that
+sent it. So a message sent through `send_message` reaches its recipient and
+is visible in WhatsApp on your phone, while `list_messages` and
+`get_last_interaction` still show only what came in.
+
+This matters when an agent sends something and then checks whether it did:
+it will conclude that it did not. Treat the tool's own success response as
+the record of a send.
+
+This is upstream behaviour, unchanged here.
+
 ### Authentication Issues
 
 - **QR Code Not Displaying (terminal)**: If the log shows a QR code was emitted but you see nothing legible, your terminal may not render half-block characters. Try a different terminal or enlarge the window.
