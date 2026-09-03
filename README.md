@@ -69,43 +69,122 @@ No other behaviour is changed. Outside the Go and Python source, this fork also 
    | `WHATSAPP_API_PORT` | `8080` | Port for the bridge's local REST API. If 8080 is taken, set this **and** point the Python server at the same port with `WHATSAPP_API_BASE_URL=http://127.0.0.1:<port>/api` — the two must agree. |
    | `WA_LOG_LEVEL` | `INFO` | Set to `DEBUG` to see the WhatsApp handshake and the XML stanzas. Connection failures are not diagnosable at `INFO`. |
 
-3. **Connect to the MCP server**
+3. **Connect it to your agent**
 
-   Copy the below json with the appropriate {{PATH}} values:
+   The Python MCP server is launched by your agent, not by you — you only
+   need to tell the agent how to start it. Every client below runs the same
+   command; only the config format differs.
+
+   Substitute two values:
+
+   - `<UV>` — the output of `which uv`
+   - `<REPO>` — the output of `pwd` at the root of this repository
+
+   **Claude Code**
+
+   ```bash
+   claude mcp add whatsapp -s user -- <UV> --directory <REPO>/whatsapp-mcp-server run main.py
+   ```
+
+   Verify with `claude mcp list`; it should report `whatsapp ... ✔ Connected`.
+
+   **Claude Desktop** — merge this into the `mcpServers` object in
+   `~/Library/Application Support/Claude/claude_desktop_config.json`.
+   Do not replace the file: it holds your other servers and your settings.
+   If the file does not exist, create it with just this content.
 
    ```json
    {
      "mcpServers": {
        "whatsapp": {
-         "command": "{{PATH_TO_UV}}", // Run `which uv` and place the output here
-         "args": [
-           "--directory",
-           "{{PATH_TO_SRC}}/whatsapp-mcp/whatsapp-mcp-server", // cd into the repo, run `pwd` and enter the output here + "/whatsapp-mcp-server"
-           "run",
-           "main.py"
-         ]
+         "command": "<UV>",
+         "args": ["--directory", "<REPO>/whatsapp-mcp-server", "run", "main.py"]
        }
      }
    }
    ```
 
-   For **Claude**, save this as `claude_desktop_config.json` in your Claude Desktop configuration directory at:
+   **Cursor** — same JSON, in `~/.cursor/mcp.json`.
 
+   **Codex** — append to `~/.codex/config.toml`.
+
+   ```toml
+   [mcp_servers.whatsapp]
+   type = "stdio"
+   command = "<UV>"
+   args = ["--directory", "<REPO>/whatsapp-mcp-server", "run", "main.py"]
    ```
-   ~/Library/Application Support/Claude/claude_desktop_config.json
+
+   If you moved the bridge off port 8080, every client above also needs
+   `WHATSAPP_API_BASE_URL=http://127.0.0.1:<port>/api` in its environment
+   (`claude mcp add -e ...`, an `"env"` object, or `[mcp_servers.whatsapp.env]`).
+
+4. **Restart the agent**
+
+   Claude Desktop and Cursor read their config at startup. Claude Code picks
+   up a new server on the next session, not the current one.
+
+5. **Keep the bridge running**
+
+   The Go bridge is what actually holds the WhatsApp connection. The MCP
+   server reads the database it writes and calls its local API — so when the
+   bridge is not running, your agent sees stale messages and cannot send.
+
+   `go run main.go` ties it to a terminal window: close the window and the
+   connection is gone, silently. For anything beyond trying it out, build a
+   binary and run it under a supervisor.
+
+   ```bash
+   cd whatsapp-bridge
+   go build -o bin/whatsapp-bridge .
    ```
 
-   For **Cursor**, save this as `mcp.json` in your Cursor configuration directory at:
+   On macOS, a LaunchAgent at
+   `~/Library/LaunchAgents/whatsapp-bridge.plist`:
 
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+     <key>Label</key>
+     <string>whatsapp-bridge</string>
+     <key>ProgramArguments</key>
+     <array>
+       <string><REPO>/whatsapp-bridge/bin/whatsapp-bridge</string>
+     </array>
+     <key>WorkingDirectory</key>
+     <string><REPO>/whatsapp-bridge</string>
+     <key>RunAtLoad</key>
+     <true/>
+     <key>KeepAlive</key>
+     <true/>
+     <key>StandardOutPath</key>
+     <string>/tmp/whatsapp-bridge.out.log</string>
+     <key>StandardErrorPath</key>
+     <string>/tmp/whatsapp-bridge.err.log</string>
+   </dict>
+   </plist>
    ```
-   ~/.cursor/mcp.json
+
+   ```bash
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/whatsapp-bridge.plist
    ```
 
-4. **Restart Claude Desktop / Cursor**
+   `WorkingDirectory` is required, not cosmetic: the bridge resolves `store/`
+   relative to the current directory, so without it you get a second, empty
+   session store in whatever directory the supervisor started from.
 
-   Open Claude Desktop and you should now see WhatsApp as an available integration.
+   Pair first, in a terminal, before putting it under a supervisor — the QR
+   code has to be scanned by a human.
 
-   Or restart Cursor.
+   **Do not treat "the process is alive" as healthy.** On logout the bridge
+   logs the event and keeps running, so the process, the port and your
+   database all look normal while sending fails. Check for it with:
+
+   ```bash
+   grep -i "logged out" /tmp/whatsapp-bridge.out.log
+   ```
 
 ### Windows Compatibility
 
