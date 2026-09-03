@@ -16,7 +16,7 @@ Here's an example of what you can do when it's connected to Claude.
 
 ## About this fork
 
-Upstream ([lharries/whatsapp-mcp](https://github.com/lharries/whatsapp-mcp)) cannot log in as of September 2026. WhatsApp rejects its pinned whatsmeow build and closes the connection before a QR code is ever shown, so pairing never starts. At the default log level the only symptom is `websocket: close 1006 (abnormal closure)`; the actual reason, visible at `DEBUG`, is `<failure location="cln" reason="405"/>` — "client outdated".
+Upstream ([lharries/whatsapp-mcp](https://github.com/lharries/whatsapp-mcp)) could not log in at the time of this fork (September 2026). WhatsApp rejects its pinned whatsmeow build and closes the connection before a QR code is ever shown, so pairing never starts. At the default log level the only symptom is `websocket: close 1006 (abnormal closure)`; the actual reason, visible at `DEBUG`, is `<failure location="cln" reason="405"/>` — "client outdated".
 
 This fork:
 
@@ -26,7 +26,7 @@ This fork:
 - makes the log level configurable (`WA_LOG_LEVEL`), because the failure above is invisible without it
 - allows 10 minutes to scan the QR code rather than 3
 
-Nothing else is changed from upstream.
+No other behaviour is changed. Outside the Go and Python source, this fork also ignores the local session store and build output, and carries a regenerated `uv.lock` (lock-format only; no dependency versions differ).
 
 **This will break again.** The whatsmeow version is pinned, and WhatsApp rejects clients that fall too far behind. When login stops working, see [Login fails, no QR code](#login-fails-no-qr-code) — the fix is two commands.
 
