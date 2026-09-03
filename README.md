@@ -40,6 +40,71 @@ No other behaviour is changed. Outside the Go and Python source, this fork also 
 - UV (Python package manager), install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - FFmpeg (_optional_) - Only needed for audio messages. If you want to send audio files as playable WhatsApp voice messages, they must be in `.ogg` Opus format. With FFmpeg installed, the MCP server will automatically convert non-Opus audio files. Without FFmpeg, you can still send raw audio files using the `send_file` tool.
 
+### Install with an agent
+
+If you use a coding agent — Claude Code, Codex, Cursor, Claude Desktop — paste the
+following and it will do everything except scan the QR code, which only you can do.
+
+```text
+Install the WhatsApp MCP server from https://github.com/daymade/whatsapp-mcp so you
+can read and send my WhatsApp messages. Follow its README.
+
+It is a fork. Do not use the upstream repository — it cannot log in.
+
+Things in the README that are easy to skip and expensive to get wrong:
+
+- Check that port 8080 is free before you build. If it is taken, set
+  WHATSAPP_API_PORT and point the MCP client at the same port with
+  WHATSAPP_API_BASE_URL. If those two disagree, pairing still succeeds and every
+  send fails in a way that is hard to trace.
+- Pairing needs me and my phone. The QR code rotates every 20 seconds or so, so run
+  the bridge in a terminal window I can actually see; do not run it in the
+  background and paste the log at me, it will be stale. Tell me before you start so
+  I can have my phone ready.
+- Confirm the pairing yourself: whatsmeow_device in
+  whatsapp-bridge/store/whatsapp.db should have a row. Do not ask me whether it
+  worked.
+- Register the server with whatever agent I am running right now, and verify it
+  connects.
+- Set the bridge up to keep running. `go run` ties it to a terminal window, and
+  closing that window drops the connection with no error anywhere.
+
+Do not message anyone. When you are done, tell me what you can now do, and what I
+should know about an agent having read access to all my chats.
+```
+
+<details>
+<summary>Same prompt in Chinese</summary>
+
+```text
+帮我装 WhatsApp MCP,让你能读写我的 WhatsApp:
+https://github.com/daymade/whatsapp-mcp 。照它的 README 做。
+
+这是个 fork。别用上游那个仓库,它登录不上。
+
+README 里几条容易跳过、跳过了很贵的:
+
+- 编译前先确认 8080 端口是空的。被占了就用 WHATSAPP_API_PORT 换一个,同时用
+  WHATSAPP_API_BASE_URL 把 MCP 客户端指到同一个端口。两边不一致的话,配对照样
+  成功,但每次发消息都会以很难追查的方式失败。
+- 配对需要我本人和我的手机。二维码大约 20 秒换一张,所以请把 bridge 跑在一个我
+  看得见的终端窗口里,别丢到后台再把日志贴给我,贴过来就过期了。开始之前先告诉
+  我一声,我好把手机拿在手上。
+- 配对成功与否你自己确认:whatsapp-bridge/store/whatsapp.db 里的
+  whatsmeow_device 表应该有数据行。别问我"成功了吗"。
+- 把 server 注册到我现在正在用的这个 agent 上,并验证它连得上。
+- 让 bridge 常驻。`go run` 会把它绑在终端窗口上,关掉窗口连接就断,而且哪里都
+  不报错。
+
+装完别给任何人发消息。结束后告诉我:你现在能做什么,以及"一个 agent 能读我全部
+聊天记录"这件事我该注意什么。
+```
+
+</details>
+
+If you would rather do it by hand, or the agent gets stuck, the same thing is written
+out below.
+
 ### Steps
 
 1. **Clone this repository**
