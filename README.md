@@ -14,6 +14,22 @@ Here's an example of what you can do when it's connected to Claude.
 
 > *Caution:* as with many MCP servers, the WhatsApp MCP is subject to [the lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/). This means that project injection could lead to private data exfiltration.
 
+## About this fork
+
+Upstream ([lharries/whatsapp-mcp](https://github.com/lharries/whatsapp-mcp)) cannot log in as of September 2026. WhatsApp rejects its pinned whatsmeow build and closes the connection before a QR code is ever shown, so pairing never starts. At the default log level the only symptom is `websocket: close 1006 (abnormal closure)`; the actual reason, visible at `DEBUG`, is `<failure location="cln" reason="405"/>` — "client outdated".
+
+This fork:
+
+- bumps whatsmeow so login works, and passes `context.Context` to the five APIs that grew one in the meantime
+- binds the local REST API to `127.0.0.1` instead of every interface — `/api/send` has no authentication, so a wildcard bind lets anyone who can reach the machine on that port send messages as the paired account
+- makes the REST API port configurable (`WHATSAPP_API_PORT`), because 8080 was hardcoded in two files that have to agree, and a port collision fails quietly
+- makes the log level configurable (`WA_LOG_LEVEL`), because the failure above is invisible without it
+- allows 10 minutes to scan the QR code rather than 3
+
+Nothing else is changed from upstream.
+
+**This will break again.** The whatsmeow version is pinned, and WhatsApp rejects clients that fall too far behind. When login stops working, see [Login fails, no QR code](#login-fails-no-qr-code) — the fix is two commands.
+
 ## Installation
 
 ### Prerequisites
@@ -29,7 +45,7 @@ Here's an example of what you can do when it's connected to Claude.
 1. **Clone this repository**
 
    ```bash
-   git clone https://github.com/lharries/whatsapp-mcp.git
+   git clone https://github.com/daymade/whatsapp-mcp.git
    cd whatsapp-mcp
    ```
 
@@ -45,6 +61,13 @@ Here's an example of what you can do when it's connected to Claude.
    The first time you run it, you will be prompted to scan a QR code. Scan the QR code with your WhatsApp mobile app to authenticate.
 
    After approximately 20 days, you will might need to re-authenticate.
+
+   Two environment variables are available:
+
+   | Variable | Default | Purpose |
+   | --- | --- | --- |
+   | `WHATSAPP_API_PORT` | `8080` | Port for the bridge's local REST API. If 8080 is taken, set this **and** point the Python server at the same port with `WHATSAPP_API_BASE_URL=http://127.0.0.1:<port>/api` — the two must agree. |
+   | `WA_LOG_LEVEL` | `INFO` | Set to `DEBUG` to see the WhatsApp handshake and the XML stanzas. Connection failures are not diagnosable at `INFO`. |
 
 3. **Connect to the MCP server**
 
@@ -172,9 +195,27 @@ By default, just the metadata of the media is stored in the local database. The 
 - If you encounter permission issues when running uv, you may need to add it to your PATH or use the full path to the executable.
 - Make sure both the Go application and the Python server are running for the integration to work properly.
 
+### Login fails, no QR code
+
+If the bridge prints `websocket: close 1006 (abnormal closure): unexpected EOF` and no QR code ever appears, restarting will not help — WhatsApp is rejecting the client. Confirm it:
+
+```bash
+WA_LOG_LEVEL=DEBUG go run main.go
+```
+
+`<failure location="cln" reason="405"/>` in the output means the pinned whatsmeow build is too old for WhatsApp's current server. Fix it in place:
+
+```bash
+cd whatsapp-bridge
+go get go.mau.fi/whatsmeow@latest && go mod tidy
+go build .
+```
+
+If the build then fails, it is because whatsmeow changed an API signature; the errors name each call site and are usually a matter of passing `context.Background()` as a new first argument.
+
 ### Authentication Issues
 
-- **QR Code Not Displaying**: If the QR code doesn't appear, try restarting the authentication script. If issues persist, check if your terminal supports displaying QR codes.
+- **QR Code Not Displaying (terminal)**: If the log shows a QR code was emitted but you see nothing legible, your terminal may not render half-block characters. Try a different terminal or enlarge the window.
 - **WhatsApp Already Logged In**: If your session is already active, the Go bridge will automatically reconnect without showing a QR code.
 - **Device Limit Reached**: WhatsApp limits the number of linked devices. If you reach this limit, you'll need to remove an existing device from WhatsApp on your phone (Settings > Linked Devices).
 - **No Messages Loading**: After initial authentication, it can take several minutes for your message history to load, especially if you have many chats.
